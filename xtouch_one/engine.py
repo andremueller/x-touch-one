@@ -1,0 +1,176 @@
+"""Device state machine: mido messages -> feedback (mido out) + backend actions."""
+
+from __future__ import annotations
+
+import logging
+import time
+from typing import Iterable
+
+import mido
+
+from . import mcu
+
+log_default = logging.getLogger("xtouch.engine")
+
+
+class Engine:
+    TICK_HZ = 60
+    LED_FLASH_MS = 120
+    FADER_ECHO_SUPPRESS_MS = 300.0
+    SHIFT_SCROLL_MULTIPLIER = 4
+
+    def __init__(self, out, backend, *, invert_jog: bool = False, now=time.monotonic,
+                 log: logging.Logger = log_default):
+        self.out = out
+        self.backend = backend
+        self.invert_jog = invert_jog
+        self.now = now
+        self.log = log
+        self.volume: int | None = None
+        self.muted = False
+        self.input_muted = False
+        self.scrub_horizontal = False
+        self.shift = False
+        self.led_state: dict[int, bool] = {}
+        self.flash_until: dict[int, float] = {}
+        self.lcd: list[str | None] = [None, None]
+        self.last_fader_at = 0.0  # seconds, same clock as `now`
+
+    # -- lifecycle ---------------------------------------------------------
+    def start(self) -> None:
+        self.volume = None
+        self.muted = False
+        self.input_muted = False
+        self.scrub_horizontal = False
+        self.shift = False
+        self.led_state.clear()
+        self.flash_until.clear()
+        self.lcd = [None, None]
+        self.last_fader_at = 0.0
+
+        self.out.send(mcu.all_leds_off())
+        self.out.send([mcu.device_query()])
+        self.out.send([mcu.backlight_saver()])
+        self.out.send([mcu.color(mcu.COLOR_WHITE)])
+        self._set_lcd("DESKTOP", "READY")
+        self.backend.preflight()
+
+    # -- input -------------------------------------------------------------
+    def handle(self, msg: mido.Message) -> None:
+        if msg.type == "pitchwheel":
+            percent = mcu.pitch_bend_to_percent(msg.pitch)
+            if percent != self.volume:
+                self.volume = percent
+                self.last_fader_at = self.now()
+                self.backend.set_volume(percent)
+                self._set_lcd(*mcu.lcd_volume(percent))
+            return
+        if msg.type == "control_change":
+            if msg.control == mcu.JOG_CC:
+                delta = mcu.jog_delta(msg.value)
+                if self.invert_jog:
+                    delta = -delta
+                if self.shift:
+                    delta *= self.SHIFT_SCROLL_MULTIPLIER
+                if delta:
+                    self.backend.scroll(delta, self.scrub_horizontal)
+            return
+        if msg.type == "note_on" and msg.velocity > 0:
+            self._note(msg.note)
+            return
+        self.log.debug("ignored %s", msg)
+
+    def _note(self, note: int) -> None:
+        if note == mcu.MUTE_NOTE:
+            self.muted = not self.muted
+            self.backend.set_muted(self.muted)
+            self._set_led(note, self.muted)
+            self._set_lcd("SYSTEM", "MUTED" if self.muted else "UNMUTE")
+            self._color(mcu.COLOR_YELLOW if self.muted else mcu.COLOR_WHITE)
+        elif note == mcu.REC_NOTE:
+            self.input_muted = not self.input_muted
+            self.backend.set_input_muted(self.input_muted)
+            self._set_led(note, self.input_muted)
+            self._set_lcd("MIC", "MUTED" if self.input_muted else "LIVE")
+            self._color(mcu.COLOR_RED if self.input_muted else mcu.COLOR_WHITE)
+        elif note == mcu.SCRUB_NOTE:
+            self.scrub_horizontal = not self.scrub_horizontal
+            self._set_led(note, self.scrub_horizontal)
+            self._set_lcd("SCROLL", "HORIZ" if self.scrub_horizontal else "VERT")
+        elif note == mcu.SHIFT_NOTE:
+            self.shift = not self.shift
+            self._set_led(note, self.shift)
+        elif note == mcu.PLAY_NOTE:
+            self.backend.media("play")
+            self._flash(note)
+        elif note == mcu.STOP_NOTE:
+            self.backend.media("play")  # macOS has no NX_KEYTYPE_STOP
+            self._flash(note)
+        elif note == mcu.REW_NOTE:
+            self.backend.media("prev")
+            self._flash(note)
+        elif note == mcu.FF_NOTE:
+            self.backend.media("next")
+            self._flash(note)
+        elif note == mcu.TAB_PREV_NOTE:
+            self.backend.tab_prev()
+            self._flash(note)
+        elif note == mcu.TAB_NEXT_NOTE:
+            self.backend.tab_next()
+            self._flash(note)
+        elif note == mcu.ZOOM_NOTE:
+            self.backend.zoom_toggle()
+            self._flash(note)
+        else:
+            self.log.debug("unmapped note %d", note)
+
+    # -- periodic ----------------------------------------------------------
+    def tick(self) -> None:
+        now = self.now()
+        for note, deadline in list(self.flash_until.items()):
+            if deadline <= now:
+                del self.flash_until[note]
+                self._set_led(note, False)
+        self.backend.tick()
+        state = self.backend.poll_audio_state()
+        if state is None:
+            return
+        volume, muted, input_muted = state
+        if muted != self.muted:
+            self.muted = muted
+            self._set_led(mcu.MUTE_NOTE, muted)
+            self._set_lcd("SYSTEM", "MUTED" if muted else "UNMUTE")
+            self._color(mcu.COLOR_YELLOW if muted else mcu.COLOR_WHITE)
+        if input_muted != self.input_muted:
+            self.input_muted = input_muted
+            self._set_led(mcu.REC_NOTE, input_muted)
+            self._set_lcd("MIC", "MUTED" if input_muted else "LIVE")
+            self._color(mcu.COLOR_RED if input_muted else mcu.COLOR_WHITE)
+        if volume != self.volume:
+            self.volume = volume
+            self._set_lcd(*mcu.lcd_volume(volume))
+            if (now - self.last_fader_at) * 1000.0 > self.FADER_ECHO_SUPPRESS_MS:
+                self.out.send([mcu.pitch_bend(volume)])
+
+    # -- feedback ----------------------------------------------------------
+    def _set_led(self, note: int, on: bool) -> None:
+        if self.led_state.get(note) == on:
+            return
+        self.led_state[note] = on
+        self.out.send([mcu.led(note, on)])
+
+    def _flash(self, note: int) -> None:
+        self._set_led(note, True)
+        self.flash_until[note] = self.now() + self.LED_FLASH_MS / 1000.0
+
+    def _color(self, code: int) -> None:
+        self.out.send([mcu.color(code)])
+
+    def _set_lcd(self, row1: str, row2: str) -> None:
+        texts: Iterable[tuple[int, str]] = ((mcu.LCD_ROW1_OFFSET, row1), (mcu.LCD_ROW2_OFFSET, row2))
+        for index, (offset, text) in enumerate(texts):
+            padded = mcu._pad7(text)
+            if self.lcd[index] == padded:
+                continue
+            self.lcd[index] = padded
+            self.out.send([mcu.lcd_row(offset, text)])
