@@ -49,7 +49,7 @@ SELFTEST_SECONDS ?= 6
 .DEFAULT_GOAL := help
 
 .PHONY: help venv run start stop restart status log ports check-env \
-        test test-protocol test-engine check selftest check-all \
+        test test-protocol test-engine test-macos check selftest check-all \
         agent-install agent-uninstall clean clean-venv
 
 help: ## diese Übersicht anzeigen
@@ -139,6 +139,9 @@ test-protocol: venv ## nur Protokollschicht (mcu.py, byte-exakt)
 
 test-engine: venv ## nur Zustandsmaschine (engine.py, Dummy-Backend)
 	$(PY) -m unittest -v tests.test_engine
+
+test-macos: venv ## nur macOS-Backend (Scrollachsen, braucht kein Gerät)
+	$(PY) -m unittest -v tests.test_macos
 
 check: test check-env ## Integritätsprüfung ohne Hardware (Tests + Umgebungscheck)
 

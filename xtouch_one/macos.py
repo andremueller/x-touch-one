@@ -33,6 +33,8 @@ KEY_FLAGS_DOWN, KEY_FLAGS_UP = 0xA00, 0xB00
 KEY_CODE = {"tab": 0x30, "equal": 0x18, "8": 0x1C}  # HIToolbox/Events.h
 MOD = {"shift": 0x20000, "ctrl": 0x40000, "alt": 0x80000, "cmd": 0x100000}  # IOLLEvent.h
 SCROLL_STEP_PX = 10
+#: deltaAxis2 sign: -1 moves the content right (measured against a real scroll view).
+HORIZONTAL_SIGN = -1
 MAX_DETENTS_PER_CALL = 20
 OSASCRIPT_MAX_HZ = 20
 
@@ -299,6 +301,20 @@ class OsascriptControl:
         pass
 
 
+def scroll_axes(detents: int, horizontal: bool) -> tuple[int, ...]:
+    """Positional arguments for CGEventCreateScrollWheelEvent2 (wheelCount + values).
+
+    The third argument of that call is the number of wheel axes: with 1, wheel2 is
+    dropped and a horizontal event scrolls nothing, so horizontal needs wheelCount=2
+    (empty vertical axis + horizontal). pyobjc's variadic bridge additionally demands
+    wheelCount + 2 values; CoreGraphics reads only the first wheelCount of them.
+    """
+    sign = 1 if detents > 0 else -1
+    if horizontal:
+        return (2, 0, HORIZONTAL_SIGN * SCROLL_STEP_PX * sign, 0, 0)
+    return (1, -SCROLL_STEP_PX * sign, 0, 0)
+
+
 class MacOSBackend(ActionBackend):
     def __init__(self, audio_mode: str = "auto", invert_scroll: bool = False) -> None:
         self.invert_scroll = invert_scroll
@@ -365,12 +381,9 @@ class MacOSBackend(ActionBackend):
             return
         if self.invert_scroll:
             detents = -detents
-        sign = 1 if detents > 0 else -1
         for _ in range(min(abs(detents), MAX_DETENTS_PER_CALL)):
-            wheel1 = 0 if horizontal else -SCROLL_STEP_PX * sign
-            wheel2 = SCROLL_STEP_PX * sign if horizontal else 0
-            event = Quartz.CGEventCreateScrollWheelEvent2(None, Quartz.kCGScrollEventUnitPixel, 1,
-                                                          wheel1, wheel2, 0)
+            event = Quartz.CGEventCreateScrollWheelEvent2(None, Quartz.kCGScrollEventUnitPixel,
+                                                          *scroll_axes(detents, horizontal))
             Quartz.CGEventSetIntegerValueField(event, Quartz.kCGScrollWheelEventIsContinuous, 1)
             Quartz.CGEventPost(kCGHIDEventTap, event)
 

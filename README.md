@@ -42,7 +42,7 @@ brew install python@3.12
 |`make start` / `make stop` / `make restart`|bridge in the background via PID file, SIGTERM then SIGKILL|
 |`make status` / `make log`|PID + last log lines / follow the log|
 |`make ports` / `make check-env`|MIDI ports / permission, audio backend, matched ports|
-|`make test` / `test-protocol` / `test-engine`|full suite / `mcu.py` only / `engine.py` only|
+|`make test` / `test-protocol` / `test-engine` / `test-macos`|full suite / `mcu.py` / `engine.py` / macOS scroll axes|
 |`make check`|integrity check without hardware: tests + environment|
 |`make selftest`|smoke test on the real device with `--backend dummy` (no system actions)|
 |`make check-all`|`check` plus `selftest`|
@@ -122,5 +122,10 @@ Protocol tests are byte-exact and need no hardware or audio device.
   so pyobjc passes a NULL buffer and CoreAudio answers `kAudioHardwareIllegalOperationError`. All
   other macOS APIs use pyobjc. Events created by `CGEventCreate*` are owned by pyobjc and released
   by GC — calling `CFRelease` on them crashes the process.
+  Scroll events carry one axis vertically and two horizontally: the wheel-count argument of
+  `CGEventCreateScrollWheelEvent2` decides how many axes are read, so horizontal needs
+  `wheelCount=2` plus `wheelCount + 2` values (pyobjc's variadic bridge). Measured against a real
+  scroll view: positive jog detents move the content down/right, and `--invert-scroll` flips both
+  axes.
 * Audio writes are coalesced: `set_volume` only records the newest value, `tick()` writes it (at
   most 20 Hz through `osascript`, which spawns a process per write).
