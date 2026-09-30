@@ -162,9 +162,9 @@ Protocol tests are byte-exact and need no hardware or audio device.
   back** to the unit: the One restores its fader to the last value the host wrote when the fader
   is released, so without the echo it snaps back to the boot-time value.
 
-  Note that macOS reports `output muted: true` whenever the output volume is **0**, so the
-  bridge shows `SYSTEM / MUTED` (mute LED, yellow backlight) at 0 % — that is the host's reading,
-  not a mute the bridge performed.
+  macOS reports `output muted: true` whenever the output volume is **0**, so the bridge shows
+  `SYSTEM / MUTED` (mute LED, yellow backlight) at 0 %. That is intended: the host's own reading
+  of silence at 0 % is mirrored rather than hidden.
 * `xtouch_one/__main__.py` — CLI, run loop and single-instance `flock` (`acquire_lock`,
   `lock_report`, `stop_instance`); the lock is the only authority for "who is running".
 * `xtouch_one/macos.py` — Quartz keyboard/scroll events, `NSEvent` system-defined events for the
