@@ -67,7 +67,6 @@ Variables are overridable: `make start PORT="X-Touch" AUDIO=osascript`, `make ru
 |`--invert-scroll`|flip scroll direction|
 |`--audio {auto,coreaudio,osascript}`|system volume control; `auto` probes CoreAudio and falls back to `osascript`|
 |`--backend {auto,dummy}`|`dummy` logs each action instead of performing it|
-|`--lcd-keepalive SECONDS`|re-send unchanged LCD rows this often so the display cannot blank; `0` disables (default 1)|
 |`--lock-file PATH`|single-instance lock (default below)|
 |`--lock-status`|print whether another instance holds the lock, then exit|
 |`--stop`|SIGTERM the lock holder (SIGKILL after 5 s), then exit|
@@ -95,10 +94,10 @@ could not).
 With the LaunchAgent loaded, `KeepAlive` restarts a refused instance about every 10 s until
 the other holder exits; then the agent takes over by itself.
 
-The display blanks when the device stays idle, so the bridge repeats the unchanged LCD rows
-each `--lcd-keepalive` interval (1 s by default, 2 short SysEx messages per second, nothing
-in between). `--lcd-keepalive 0` turns that off. The init-time backlight-saver command
-`0B 7F` is still sent; whether the unit honours it is unconfirmed.
+The display backlight is kept on by the MCU *backlight saver* command `0B 7F`
+("backlight on, 127 min timeout"; there is no "never" — `0B 00` is *off*). The bridge sends it
+at start and again every 60 s. Re-sending the scribble-strip *text* instead is what made the
+X-Touch One display go dark, so text is written only on change.
 
 ### Controls
 
@@ -147,7 +146,8 @@ Protocol tests are byte-exact and need no hardware or audio device.
   notices, flushes coalesced volume writes and reflects audio state changes without calling back
   into the backend. The LCD has one persistent state (volume, mute, scroll plane) plus a notice
   layer: `_notice_lcd()` shows something for `LCD_NOTICE_MS` and any state change cancels it.
-  Idle rows are re-sent every `lcd_keepalive` seconds so the display cannot blank.
+  Text is written only on change; the backlight saver `0B 7F` is refreshed every
+  `BACKLIGHT_REFRESH_S` seconds to keep the display lit.
 * `xtouch_one/__main__.py` — CLI, run loop and single-instance `flock` (`acquire_lock`,
   `lock_report`, `stop_instance`); the lock is the only authority for "who is running".
 * `xtouch_one/macos.py` — Quartz keyboard/scroll events, `NSEvent` system-defined events for the

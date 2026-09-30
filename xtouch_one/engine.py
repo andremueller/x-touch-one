@@ -16,17 +16,18 @@ class Engine:
     TICK_HZ = 60
     LED_FLASH_MS = 120
     LCD_NOTICE_MS = 1200
-    LCD_KEEPALIVE_DEFAULT = 1.0
+    #: `0B 7F` = "LCD backlight on, 127 min timeout" (MCU backlight saver). There is no
+    #: "never", so the bridge re-sends it well inside the timeout to keep the display lit.
+    #: Re-sending scribble-strip *text* instead is what blanked the X-Touch One display.
+    BACKLIGHT_REFRESH_S = 60.0
     FADER_ECHO_SUPPRESS_MS = 300.0
     SHIFT_SCROLL_MULTIPLIER = 4
 
     def __init__(self, out, backend, *, invert_jog: bool = False,
-                 lcd_keepalive: float = LCD_KEEPALIVE_DEFAULT,
                  now=time.monotonic, log: logging.Logger = log_default):
         self.out = out
         self.backend = backend
         self.invert_jog = invert_jog
-        self.lcd_keepalive = lcd_keepalive
         self.now = now
         self.log = log
         self.volume: int | None = None
@@ -38,8 +39,8 @@ class Engine:
         self.flash_until: dict[int, float] = {}
         self.lcd_state: list[str] = ["DESKTOP", "READY"]
         self.lcd_shown: list[str | None] = [None, None]
-        self.lcd_written_at: list[float] = [0.0, 0.0]
         self.lcd_notice: tuple[list[str], float] | None = None
+        self.backlight_at = 0.0
         self.last_fader_at = 0.0  # seconds, same clock as `now`
 
     # -- lifecycle ---------------------------------------------------------
@@ -53,13 +54,13 @@ class Engine:
         self.flash_until.clear()
         self.lcd_state = ["DESKTOP", "READY"]
         self.lcd_shown = [None, None]
-        self.lcd_written_at = [0.0, 0.0]
         self.lcd_notice = None
         self.last_fader_at = 0.0
 
         self.out.send(mcu.all_leds_off())
         self.out.send([mcu.device_query()])
         self.out.send([mcu.backlight_saver()])
+        self.backlight_at = self.now()
         self.out.send([mcu.color(mcu.COLOR_WHITE)])
         self._set_lcd("DESKTOP", "READY")
         self.backend.preflight()
@@ -145,8 +146,9 @@ class Engine:
         if self.lcd_notice is not None and self.lcd_notice[1] <= now:
             self.lcd_notice = None
             self._render_lcd()
-        if self.lcd_keepalive > 0.0:
-            self._refresh_lcd()
+        if now - self.backlight_at >= self.BACKLIGHT_REFRESH_S:
+            self.backlight_at = now
+            self.out.send([mcu.backlight_saver()])
         self.backend.tick()
         state = self.backend.poll_audio_state()
         if state is None:
@@ -195,26 +197,11 @@ class Engine:
 
     def _render_lcd(self) -> None:
         rows = self.lcd_notice[0] if self.lcd_notice else self.lcd_state
-        now = self.now()
         for index in (0, 1):
             if self.lcd_shown[index] != mcu._pad7(rows[index]):
-                self._write_lcd_row(index, rows[index], now)
+                self._write_lcd_row(index, rows[index])
 
-    def _refresh_lcd(self) -> None:
-        """Re-send rows that have not been written for a keepalive interval.
-
-        The One blanks its display while it stays idle, and any write resets that timer, so
-        an idle bridge repeats the unchanged rows at `lcd_keepalive`. Rows written more
-        recently (user activity, notices) are skipped.
-        """
-        rows = self.lcd_notice[0] if self.lcd_notice else self.lcd_state
-        now = self.now()
-        for index in (0, 1):
-            if now - self.lcd_written_at[index] >= self.lcd_keepalive:
-                self._write_lcd_row(index, rows[index], now)
-
-    def _write_lcd_row(self, index: int, text: str, now: float) -> None:
+    def _write_lcd_row(self, index: int, text: str) -> None:
         offset = mcu.LCD_ROW1_OFFSET if index == 0 else mcu.LCD_ROW2_OFFSET
         self.lcd_shown[index] = mcu._pad7(text)
-        self.lcd_written_at[index] = now
         self.out.send([mcu.lcd_row(offset, text)])

@@ -119,9 +119,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING"), default="INFO")
     parser.add_argument("--lock-file", default=None,
                         help=f"single-instance lock (default: {LOCK_FILE})")
-    parser.add_argument("--lcd-keepalive", type=float, default=1.0, metavar="SECONDS",
-                        help="re-send unchanged LCD rows this often so the display does not "
-                             "blank; 0 disables (default: %(default)s)")
     parser.add_argument("--install-agent", action="store_true", help="write the LaunchAgent plist")
     parser.add_argument("--uninstall-agent", action="store_true", help="remove the LaunchAgent plist")
     return parser.parse_args(argv)
@@ -248,8 +245,7 @@ def run(args: argparse.Namespace) -> int:
                 if stop.wait(RESCAN_INTERVAL):
                     break
                 continue
-            engine = Engine(io, backend, invert_jog=args.invert_jog,
-                            lcd_keepalive=args.lcd_keepalive)
+            engine = Engine(io, backend, invert_jog=args.invert_jog)
             engine.start()
             last_rescan = time.monotonic()
             try:
