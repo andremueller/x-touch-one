@@ -278,6 +278,16 @@ class TestBankButtons(EngineTestCase):
 
 
 class TestFader(EngineTestCase):
+    def test_fader_move_is_echoed_back(self):
+        # The One restores its fader to the last host-written value when the fader is
+        # released, so a local move must be echoed or the fader snaps back to the boot value.
+        move = mido.Message("pitchwheel", pitch=500, channel=0)
+        self.engine.handle(move)
+        self.assertEqual(self.out.messages[-1], enc(move))
+        before = len(self.out.messages)
+        self.engine.handle(mido.Message("pitchwheel", pitch=500, channel=0))
+        self.assertEqual(len(self.out.messages), before)  # unchanged value: no echo
+
     def test_deduplicates_rounded_percent(self):
         self.engine.handle(mido.Message("pitchwheel", pitch=0, channel=0))
         self.engine.handle(mido.Message("pitchwheel", pitch=0, channel=0))
@@ -310,18 +320,16 @@ class TestFader(EngineTestCase):
         self.clock.advance(0.4)  # past the echo suppression window
         self.backend.audio_state = (33, False, False)
         self.engine.tick()
-        # the motor write targets both fader 1 (ch 1) and the master fader (ch 9)
+        # ch 1 only - writing the master fader (ch 9) too made the fader bounce back
         self.assertTrue(self.out.has(b"\xe0\x1e\x2a"))
-        self.assertTrue(self.out.has(b"\xe8\x1e\x2a"))
+        self.assertFalse(self.out.has(b"\xe8\x1e\x2a"))
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW2_OFFSET, "VOL  33")))
         self.assertEqual(self.backend.calls, [])
         self.assertEqual(self.out.messages.count(b"\xe0\x1e\x2a"), 1)
-        self.assertEqual(self.out.messages.count(b"\xe8\x1e\x2a"), 1)
 
         self.out.messages.clear()
         self.engine.tick()
         self.assertFalse(self.out.has(b"\xe0\x1e\x2a"))
-        self.assertFalse(self.out.has(b"\xe8\x1e\x2a"))
 
     def test_external_mute_and_input_mute_never_call_backend(self):
         self.backend.audio_state = (50, True, True)

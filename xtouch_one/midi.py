@@ -73,6 +73,7 @@ class MidiIO:
         if self._out is None:
             return
         for m in messages:
+            log.debug("out %s", m)
             self._out.send(m)
 
     def rescan(self) -> bool:

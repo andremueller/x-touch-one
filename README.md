@@ -150,16 +150,21 @@ Protocol tests are byte-exact and need no hardware or audio device.
   `00 00 66 14`, LCD `0x12` with row offsets `0x00`/`0x38` (7 ASCII chars, space padded),
   colour `0x72` (8 slots), jog CC 60 signed-bit deltas, pitch-wheel bias 8192.
   `bridge_leds_off()` clears only `BRIDGE_LED_NOTES` (notes 0-101) — never the full 0..117
-  range, which triggers the unit's `Select Bank` state. The motor write (`motor_bend`) targets
-  both fader 1 (pitch-bend ch 1) and the master fader (ch 9), since the One's single fader maps
-  to either depending on the locally selected channel; only ch 1 was confirmed to move the motor.
+  range, which triggers the unit's `Select Bank` state. The motor write targets pitch-bend
+  **ch 1 only** (the One's fader hangs off fader 1; writing ch 9 as well does nothing).
 * `xtouch_one/midi.py` — port matching by substring, callback → queue, `rescan()` name check.
 * `xtouch_one/engine.py` — mapping and state; the 60 Hz tick expires LED flashes and transient LCD
   notices, flushes coalesced volume writes and reflects audio state changes without calling back
   into the backend. The LCD has one persistent state (volume, mute, scroll plane) plus a notice
   layer: `_notice_lcd()` shows something for `LCD_NOTICE_MS` and any state change cancels it.
   Text is written only on change; the backlight saver `0B 7F` is refreshed every
-  `BACKLIGHT_REFRESH_S` seconds to keep the display lit.
+  `BACKLIGHT_REFRESH_S` seconds to keep the display lit. A local fader move is **echoed straight
+  back** to the unit: the One restores its fader to the last value the host wrote when the fader
+  is released, so without the echo it snaps back to the boot-time value.
+
+  Note that macOS reports `output muted: true` whenever the output volume is **0**, so the
+  bridge shows `SYSTEM / MUTED` (mute LED, yellow backlight) at 0 % — that is the host's reading,
+  not a mute the bridge performed.
 * `xtouch_one/__main__.py` — CLI, run loop and single-instance `flock` (`acquire_lock`,
   `lock_report`, `stop_instance`); the lock is the only authority for "who is running".
 * `xtouch_one/macos.py` — Quartz keyboard/scroll events, `NSEvent` system-defined events for the

@@ -74,6 +74,10 @@ class Engine:
                 self.last_fader_at = self.now()
                 self.backend.set_volume(percent)
                 self._set_lcd(*mcu.lcd_volume(percent))
+                # Echo the position straight back: the One restores its fader to the last
+                # value the host wrote when the fader is released, so without this it snaps
+                # back to whatever the host wrote last (e.g. the boot-time value).
+                self.out.send([msg])
             return
         if msg.type == "control_change":
             if msg.control == mcu.JOG_CC:
@@ -155,6 +159,8 @@ class Engine:
         if state is None:
             return
         volume, muted, input_muted = state
+        self.log.debug("audio state vol=%s muted=%s in_muted=%s (engine vol=%s muted=%s)",
+                       volume, muted, input_muted, self.volume, self.muted)
         if muted != self.muted:
             self.muted = muted
             self._set_led(mcu.MUTE_NOTE, muted)
@@ -169,7 +175,10 @@ class Engine:
             self.volume = volume
             self._set_lcd(*mcu.lcd_volume(volume))
             if (now - self.last_fader_at) * 1000.0 > self.FADER_ECHO_SUPPRESS_MS:
-                self.out.send(mcu.motor_bend(volume))
+                # ch 1 only: the One's fader hangs off fader 1. Also writing the master fader
+                # (ch 9) makes the unit bounce the fader back to a stale position.
+                self.log.debug("motor write %s %% (polled)", volume)
+                self.out.send([mcu.pitch_bend(volume)])
 
     # -- feedback ----------------------------------------------------------
     def _set_led(self, note: int, on: bool) -> None:
