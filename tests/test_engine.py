@@ -302,6 +302,7 @@ class TestFader(EngineTestCase):
         self.backend.audio_state = (33, False, False)
         self.engine.tick()
         self.assertFalse(self.out.has(b"\xe0\x1e\x2a"))
+        self.assertFalse(self.out.has(b"\xe8\x1e\x2a"))
         self.assertEqual(self.backend.calls, [("set_volume", 50)])
 
     def test_external_change_moves_motor_without_calling_back(self):
@@ -310,14 +311,18 @@ class TestFader(EngineTestCase):
         self.clock.advance(0.4)  # past the echo suppression window
         self.backend.audio_state = (33, False, False)
         self.engine.tick()
+        # the motor write targets both fader 1 (ch 1) and the master fader (ch 9)
         self.assertTrue(self.out.has(b"\xe0\x1e\x2a"))
+        self.assertTrue(self.out.has(b"\xe8\x1e\x2a"))
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW2_OFFSET, "VOL  33")))
         self.assertEqual(self.backend.calls, [])
         self.assertEqual(self.out.messages.count(b"\xe0\x1e\x2a"), 1)
+        self.assertEqual(self.out.messages.count(b"\xe8\x1e\x2a"), 1)
 
         self.out.messages.clear()
         self.engine.tick()
         self.assertFalse(self.out.has(b"\xe0\x1e\x2a"))
+        self.assertFalse(self.out.has(b"\xe8\x1e\x2a"))
 
     def test_external_mute_and_input_mute_never_call_backend(self):
         self.backend.audio_state = (50, True, True)

@@ -169,7 +169,7 @@ class Engine:
             self.volume = volume
             self._set_lcd(*mcu.lcd_volume(volume))
             if (now - self.last_fader_at) * 1000.0 > self.FADER_ECHO_SUPPRESS_MS:
-                self.out.send([mcu.pitch_bend(volume)])
+                self.out.send(mcu.motor_bend(volume))
 
     # -- feedback ----------------------------------------------------------
     def _set_led(self, note: int, on: bool) -> None:

@@ -92,6 +92,16 @@ class TestPitchBend(unittest.TestCase):
         self.assertEqual(mcu.pitch_bend_to_percent(8191), 100)
         self.assertEqual(mcu.pitch_bend_to_percent(0), 50)
 
+    def test_motor_bend_targets_fader_and_master(self):
+        # MCU: fader 1 = pitch-bend ch 1, master fader = ch 9. The motor write must reach
+        # whichever the One's single fader is assigned to.
+        msgs = mcu.motor_bend(33)
+        self.assertEqual([m.channel for m in msgs], [0, 8])
+        self.assertEqual(enc(msgs[0]), b"\xe0\x1e\x2a")
+        self.assertEqual(enc(msgs[1]), b"\xe8\x1e\x2a")
+        for m in msgs:
+            self.assertEqual(mcu.pitch_bend_to_percent(m.pitch), 33)
+
 
 class TestNoteMap(unittest.TestCase):
     def test_notes(self):

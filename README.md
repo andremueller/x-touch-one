@@ -145,7 +145,9 @@ Protocol tests are byte-exact and need no hardware or audio device.
 
 * `xtouch_one/mcu.py` — protocol constants and `mido.Message` builders (no I/O): SysEx id
   `00 00 66 14`, LCD `0x12` with row offsets `0x00`/`0x38` (7 ASCII chars, space padded),
-  colour `0x72` (8 slots), jog CC 60 signed-bit deltas, pitch-wheel bias 8192.
+  colour `0x72` (8 slots), jog CC 60 signed-bit deltas, pitch-wheel bias 8192. The motor write
+  (`motor_bend`) targets both fader 1 (pitch-bend ch 1) and the master fader (ch 9), since the
+  One's single fader maps to either depending on the locally selected channel.
 * `xtouch_one/midi.py` — port matching by substring, callback → queue, `rescan()` name check.
 * `xtouch_one/engine.py` — mapping and state; the 60 Hz tick expires LED flashes and transient LCD
   notices, flushes coalesced volume writes and reflects audio state changes without calling back

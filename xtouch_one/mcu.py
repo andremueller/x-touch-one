@@ -21,6 +21,9 @@ LED_NOTE_MAX = 117
 
 JOG_CC = 60
 
+#: MCU drives its 9 faders on pitch-bend MIDI channels 0-8: fader 1 = ch 1, master = ch 9.
+FADER_CHANNEL, MASTER_FADER_CHANNEL = 0, 8
+
 LCD_ROW1_OFFSET, LCD_ROW2_OFFSET = 0x00, 0x38
 
 COLOR_RED, COLOR_GREEN, COLOR_YELLOW, COLOR_BLUE, COLOR_WHITE = 1, 2, 3, 4, 7
@@ -63,6 +66,18 @@ def all_leds_off() -> list[mido.Message]:
 def pitch_bend(percent: int) -> mido.Message:
     pb = round(clamp(percent, 0, 100) * 16383 / 100)
     return mido.Message("pitchwheel", pitch=pb - PITCHWHEEL_BIAS, channel=0)
+
+
+def motor_bend(percent: int) -> list[mido.Message]:
+    """Fader position for the motor.
+
+    The One's single fader maps to fader 1 (ch 1) or the master fader (ch 9) depending on
+    which channel is selected locally, so the motor write targets both. Sending only fader
+    1 (ch 1) is why the fader never moved: the master fader is channel 8 (MIDI ch 9).
+    """
+    pb = round(clamp(percent, 0, 100) * 16383 / 100) - PITCHWHEEL_BIAS
+    return [mido.Message("pitchwheel", pitch=pb, channel=channel)
+            for channel in (FADER_CHANNEL, MASTER_FADER_CHANNEL)]
 
 
 def pitch_bend_to_percent(pitch: int) -> int:
