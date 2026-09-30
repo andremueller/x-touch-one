@@ -162,9 +162,11 @@ Protocol tests are byte-exact and need no hardware or audio device.
   back** to the unit: the One restores its fader to the last value the host wrote when the fader
   is released, so without the echo it snaps back to the boot-time value.
 
-  macOS reports `output muted: true` whenever the output volume is **0**, so the bridge shows
-  `SYSTEM / MUTED` (mute LED, yellow backlight) at 0 %. That is intended: the host's own reading
-  of silence at 0 % is mirrored rather than hidden.
+  Whether 0 % also reads as *muted* depends on the audio backend, and the bridge mirrors whatever
+  the host reports: the `osascript` API couples the two (`set volume output volume 0` also sets
+  `output muted true`, and raising the volume clears it again), while the CoreAudio path writes the
+  volume scalar and leaves the device's mute property alone. So `--audio osascript` shows
+  `SYSTEM / MUTED` at 0 %, `--audio coreaudio` (the `auto` default) shows `MASTER / VOL 0`.
 * `xtouch_one/__main__.py` — CLI, run loop and single-instance `flock` (`acquire_lock`,
   `lock_report`, `stop_instance`); the lock is the only authority for "who is running".
 * `xtouch_one/macos.py` — Quartz keyboard/scroll events, `NSEvent` system-defined events for the
