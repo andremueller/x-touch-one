@@ -17,7 +17,13 @@ BANK_PREV_NOTE, BANK_NEXT_NOTE = 46, 47
 CHANNEL_PREV_NOTE, CHANNEL_NEXT_NOTE = 48, 49
 SHIFT_NOTE, REW_NOTE, STOP_NOTE, PLAY_NOTE = 57, 91, 93, 94
 FF_NOTE, ZOOM_NOTE, SCRUB_NOTE = 92, 100, 101
-LED_NOTE_MAX = 117
+#: LED notes the bridge itself can light; the startup off-sweep clears exactly these.
+#: Do NOT sweep the full 0..117 range: a sweep over the whole note range (which includes the
+#: fader-touch notes 104-112) makes the X-Touch One show its own "Select Bank" prompt, park
+#: the fader at 0 % and ignore host fader positions until a button is pressed.
+BRIDGE_LED_NOTES = (REC_NOTE, MUTE_NOTE, BANK_PREV_NOTE, BANK_NEXT_NOTE,
+                    CHANNEL_PREV_NOTE, CHANNEL_NEXT_NOTE, SHIFT_NOTE, REW_NOTE, FF_NOTE,
+                    STOP_NOTE, PLAY_NOTE, ZOOM_NOTE, SCRUB_NOTE)
 
 JOG_CC = 60
 
@@ -59,8 +65,8 @@ def led(note: int, on: bool) -> mido.Message:
     return mido.Message("note_on", note=note, velocity=127 if on else 0, channel=0)
 
 
-def all_leds_off() -> list[mido.Message]:
-    return [led(n, False) for n in range(LED_NOTE_MAX + 1)]
+def bridge_leds_off() -> list[mido.Message]:
+    return [led(n, False) for n in BRIDGE_LED_NOTES]
 
 
 def pitch_bend(percent: int) -> mido.Message:

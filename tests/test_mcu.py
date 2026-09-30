@@ -50,12 +50,21 @@ class TestLeds(unittest.TestCase):
         self.assertEqual(enc(mcu.led(16, True)), b"\x90\x10\x7f")
         self.assertEqual(enc(mcu.led(16, False)), b"\x90\x10\x00")
 
-    def test_all_leds_off_sweeps_0_to_117(self):
-        messages = mcu.all_leds_off()
-        self.assertEqual(len(messages), 118)
-        self.assertEqual(enc(messages[0]), b"\x90\x00\x00")
-        self.assertEqual(enc(messages[-1]), b"\x90\x75\x00")
-        self.assertEqual(mcu.LED_NOTE_MAX, 117)
+    def test_bridge_leds_off_covers_only_bridge_notes(self):
+        # Regression: sweeping the full 0..117 range (by accident) put the X-Touch One into
+        # its "Select Bank" prompt and parked the fader at 0 %.
+        messages = mcu.bridge_leds_off()
+        notes = [m.note for m in messages]
+        self.assertEqual(len(messages), len(mcu.BRIDGE_LED_NOTES))
+        self.assertEqual(notes, sorted(set(notes)))
+        self.assertIn(0, notes)       # REC
+        self.assertIn(16, notes)      # MUTE
+        self.assertIn(101, notes)     # SCRUB
+        self.assertNotIn(104, notes)  # fader touch
+        self.assertNotIn(112, notes)
+        self.assertTrue(all(m.note <= mcu.SCRUB_NOTE for m in messages))
+        for m in messages:
+            self.assertEqual(m.velocity, 0)
 
 
 class TestJog(unittest.TestCase):

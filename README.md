@@ -112,15 +112,18 @@ X-Touch One display go dark, so text is written only on change.
 |Play (94) / Stop (93)|play/pause|LED flash ~120 ms|
 |Rewind (91) / FF (92)|previous / next track|LED flash|
 |Bank ◀ (46) / ▶ (47)|previous / next tab (⌃⇧⇥ / ⌃⇥)|LED flash + LCD notice `TAB`/`< PREV` \| `NEXT >` for 1.2 s, then the previous display returns|
-|Channel ◀ (48) / ▶ (49)|local only: select/arm the fader's channel (the unit's own `Select Bank` prompt)|—|
+|Channel ◀ (48) / ▶ (49)|local only: the unit's own channel/bank selection — left unmapped on the host|—|
 |Zoom (100)|⌥⌘8 accessibility zoom|LED flash|
 
 Stop sends play/pause: macOS has no `NX_KEYTYPE_STOP`. Unassigned by design: transport Record
 (note 95), the encoder (CC 16 / note 32), the foot switch, the 8-LED meter, the 7-segment display.
 
-At startup the unit shows its own `Select Bank` prompt and the fader stays down until a
-channel/bank button is pressed once — that arming is device-local (no host command selects the
-bank in MCU) and is why the channel buttons are left unmapped.
+The unit's own `Select Bank` prompt (fader parked at 0 %, host fader positions ignored) is
+triggered by **sweeping LEDs across the whole note range**: a `0..117` off-sweep hits the
+fader-touch notes 104-112 and drops the One into that state. The bridge therefore only clears
+the LEDs it actually uses (`mcu.BRIDGE_LED_NOTES`, notes 0-101) at startup, which leaves the
+fader working immediately. The channel buttons stay unmapped on the host so that using them
+(after a power-on, if the prompt ever appears) has no side effect.
 
 ### Autostart
 
@@ -145,9 +148,11 @@ Protocol tests are byte-exact and need no hardware or audio device.
 
 * `xtouch_one/mcu.py` — protocol constants and `mido.Message` builders (no I/O): SysEx id
   `00 00 66 14`, LCD `0x12` with row offsets `0x00`/`0x38` (7 ASCII chars, space padded),
-  colour `0x72` (8 slots), jog CC 60 signed-bit deltas, pitch-wheel bias 8192. The motor write
-  (`motor_bend`) targets both fader 1 (pitch-bend ch 1) and the master fader (ch 9), since the
-  One's single fader maps to either depending on the locally selected channel.
+  colour `0x72` (8 slots), jog CC 60 signed-bit deltas, pitch-wheel bias 8192.
+  `bridge_leds_off()` clears only `BRIDGE_LED_NOTES` (notes 0-101) — never the full 0..117
+  range, which triggers the unit's `Select Bank` state. The motor write (`motor_bend`) targets
+  both fader 1 (pitch-bend ch 1) and the master fader (ch 9), since the One's single fader maps
+  to either depending on the locally selected channel; only ch 1 was confirmed to move the motor.
 * `xtouch_one/midi.py` — port matching by substring, callback → queue, `rescan()` name check.
 * `xtouch_one/engine.py` — mapping and state; the 60 Hz tick expires LED flashes and transient LCD
   notices, flushes coalesced volume writes and reflects audio state changes without calling back

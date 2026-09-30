@@ -57,7 +57,7 @@ class Engine:
         self.lcd_notice = None
         self.last_fader_at = 0.0
 
-        self.out.send(mcu.all_leds_off())
+        self.out.send(mcu.bridge_leds_off())
         self.out.send([mcu.device_query()])
         self.out.send([mcu.backlight_saver()])
         self.backlight_at = self.now()

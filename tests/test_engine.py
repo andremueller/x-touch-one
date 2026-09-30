@@ -73,9 +73,8 @@ class TestStart(EngineTestCase):
         out = Recorder()
         engine = Engine(out, DummyBackend(), now=clock)
         engine.start()
-        self.assertEqual(len(out.batches[0]), 118)  # all LEDs off in one send
+        self.assertEqual(len(out.batches[0]), len(mcu.BRIDGE_LED_NOTES))  # bridge LEDs off
         self.assertEqual(out.batches[0][0], b"\x90\x00\x00")
-        self.assertEqual(out.batches[0][-1], b"\x90\x75\x00")
         self.assertEqual(out.batches[1], [enc(mcu.device_query())])
         self.assertEqual(out.batches[2], [enc(mcu.backlight_saver())])
         self.assertEqual(out.batches[3], [color_bytes(mcu.COLOR_WHITE)])
@@ -92,7 +91,7 @@ class TestStart(EngineTestCase):
         self.engine.start()
         self.assertIsNone(self.engine.volume)
         self.assertFalse(self.engine.muted)
-        self.assertEqual(len(self.out.batches[0]), 118)
+        self.assertEqual(len(self.out.batches[0]), len(mcu.BRIDGE_LED_NOTES))
         self.assertEqual(self.out.batches[0][0], b"\x90\x00\x00")
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW1_OFFSET, "DESKTOP")))
 
