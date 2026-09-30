@@ -10,7 +10,8 @@ import mido
 SYSEX_ID = bytes([0x00, 0x00, 0x66, 0x14])  # Mackie Designs / MCU device id (F0/F7 added by mido)
 
 FADER_NOTE, MUTE_NOTE, REC_NOTE = 104, 16, 0
-TAB_PREV_NOTE, TAB_NEXT_NOTE = 48, 49
+#: "CHANNEL ◀/▶" buttons (MCU Channel Left/Right); the bridge maps them to tab switching.
+CHANNEL_PREV_NOTE, CHANNEL_NEXT_NOTE = 48, 49
 SHIFT_NOTE, REW_NOTE, STOP_NOTE, PLAY_NOTE = 57, 91, 93, 94
 FF_NOTE, ZOOM_NOTE, SCRUB_NOTE = 92, 100, 101
 LED_NOTE_MAX = 117

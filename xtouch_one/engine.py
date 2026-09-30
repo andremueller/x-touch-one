@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Iterable
 
 import mido
 
@@ -16,6 +15,7 @@ log_default = logging.getLogger("xtouch.engine")
 class Engine:
     TICK_HZ = 60
     LED_FLASH_MS = 120
+    LCD_NOTICE_MS = 1200
     FADER_ECHO_SUPPRESS_MS = 300.0
     SHIFT_SCROLL_MULTIPLIER = 4
 
@@ -33,7 +33,9 @@ class Engine:
         self.shift = False
         self.led_state: dict[int, bool] = {}
         self.flash_until: dict[int, float] = {}
-        self.lcd: list[str | None] = [None, None]
+        self.lcd_state: list[str] = ["DESKTOP", "READY"]
+        self.lcd_shown: list[str | None] = [None, None]
+        self.lcd_notice: tuple[list[str], float] | None = None
         self.last_fader_at = 0.0  # seconds, same clock as `now`
 
     # -- lifecycle ---------------------------------------------------------
@@ -45,7 +47,9 @@ class Engine:
         self.shift = False
         self.led_state.clear()
         self.flash_until.clear()
-        self.lcd = [None, None]
+        self.lcd_state = ["DESKTOP", "READY"]
+        self.lcd_shown = [None, None]
+        self.lcd_notice = None
         self.last_fader_at = 0.0
 
         self.out.send(mcu.all_leds_off())
@@ -112,12 +116,14 @@ class Engine:
         elif note == mcu.FF_NOTE:
             self.backend.media("next")
             self._flash(note)
-        elif note == mcu.TAB_PREV_NOTE:
+        elif note == mcu.CHANNEL_PREV_NOTE:
             self.backend.tab_prev()
             self._flash(note)
-        elif note == mcu.TAB_NEXT_NOTE:
+            self._notice_lcd("TAB", "< PREV")
+        elif note == mcu.CHANNEL_NEXT_NOTE:
             self.backend.tab_next()
             self._flash(note)
+            self._notice_lcd("TAB", "NEXT >")
         elif note == mcu.ZOOM_NOTE:
             self.backend.zoom_toggle()
             self._flash(note)
@@ -131,6 +137,9 @@ class Engine:
             if deadline <= now:
                 del self.flash_until[note]
                 self._set_led(note, False)
+        if self.lcd_notice is not None and self.lcd_notice[1] <= now:
+            self.lcd_notice = None
+            self._render_lcd()
         self.backend.tick()
         state = self.backend.poll_audio_state()
         if state is None:
@@ -167,10 +176,22 @@ class Engine:
         self.out.send([mcu.color(code)])
 
     def _set_lcd(self, row1: str, row2: str) -> None:
-        texts: Iterable[tuple[int, str]] = ((mcu.LCD_ROW1_OFFSET, row1), (mcu.LCD_ROW2_OFFSET, row2))
-        for index, (offset, text) in enumerate(texts):
+        """Persistent LCD content; a running notice is dropped."""
+        self.lcd_state = [row1, row2]
+        self.lcd_notice = None
+        self._render_lcd()
+
+    def _notice_lcd(self, row1: str, row2: str) -> None:
+        """Transient LCD content (e.g. what the channel buttons just sent)."""
+        self.lcd_notice = ([row1, row2], self.now() + self.LCD_NOTICE_MS / 1000.0)
+        self._render_lcd()
+
+    def _render_lcd(self) -> None:
+        rows = self.lcd_notice[0] if self.lcd_notice else self.lcd_state
+        for index, offset in enumerate((mcu.LCD_ROW1_OFFSET, mcu.LCD_ROW2_OFFSET)):
+            text = rows[index]
             padded = mcu._pad7(text)
-            if self.lcd[index] == padded:
+            if self.lcd_shown[index] == padded:
                 continue
-            self.lcd[index] = padded
+            self.lcd_shown[index] = padded
             self.out.send([mcu.lcd_row(offset, text)])

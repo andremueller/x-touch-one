@@ -82,7 +82,7 @@ Variables are overridable: `make start PORT="X-Touch" AUDIO=osascript`, `make ru
 |Shift (note 57)|quadruples jog scroll|LED 57|
 |Play (94) / Stop (93)|play/pause|LED flash ~120 ms|
 |Rewind (91) / FF (92)|previous / next track|LED flash|
-|Channel `<` (48) / `>` (49)|previous / next tab (⌃⇧⇥ / ⌃⇥)|LED flash|
+|Channel ◀ (48) / ▶ (49)|previous / next tab (⌃⇧⇥ / ⌃⇥)|LED flash + LCD notice `TAB`/`< PREV` \| `NEXT >` for 1.2 s, then the previous display returns|
 |Zoom (100)|⌥⌘8 accessibility zoom|LED flash|
 
 Stop sends play/pause: macOS has no `NX_KEYTYPE_STOP`. Unassigned by design: transport Record
@@ -113,8 +113,10 @@ Protocol tests are byte-exact and need no hardware or audio device.
   `00 00 66 14`, LCD `0x12` with row offsets `0x00`/`0x38` (7 ASCII chars, space padded),
   colour `0x72` (8 slots), jog CC 60 signed-bit deltas, pitch-wheel bias 8192.
 * `xtouch_one/midi.py` — port matching by substring, callback → queue, `rescan()` name check.
-* `xtouch_one/engine.py` — mapping and state; 60 Hz tick expires LED flashes, flushes coalesced
-  volume writes and reflects audio state changes without calling back into the backend.
+* `xtouch_one/engine.py` — mapping and state; the 60 Hz tick expires LED flashes and transient LCD
+  notices, flushes coalesced volume writes and reflects audio state changes without calling back
+  into the backend. The LCD has one persistent state (volume, mute, scroll plane) plus a notice
+  layer: `_notice_lcd()` shows something for `LCD_NOTICE_MS` and any state change cancels it.
 * `xtouch_one/macos.py` — Quartz keyboard/scroll events, `NSEvent` system-defined events for the
   media keys, and CoreAudio default-device volume/mute.
   CoreAudio property I/O is bound with `ctypes` because pyobjc's CoreAudio bridge cannot express
