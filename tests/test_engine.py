@@ -205,12 +205,20 @@ class TestTransport(EngineTestCase):
         self.assertFalse(self.out.has(b"\x90\x5e\x00"))
 
     def test_tabs_and_zoom(self):
-        self.press(mcu.CHANNEL_PREV_NOTE)
-        self.press(mcu.CHANNEL_NEXT_NOTE)
+        self.press(mcu.BANK_PREV_NOTE)
+        self.press(mcu.BANK_NEXT_NOTE)
         self.press(mcu.ZOOM_NOTE)
         self.assertEqual(self.backend.calls, [("tab_prev",), ("tab_next",), ("zoom_toggle",)])
-        for note in (mcu.CHANNEL_PREV_NOTE, mcu.CHANNEL_NEXT_NOTE, mcu.ZOOM_NOTE):
+        for note in (mcu.BANK_PREV_NOTE, mcu.BANK_NEXT_NOTE, mcu.ZOOM_NOTE):
             self.assertTrue(self.out.has(bytes([0x90, note, 0x7F])))
+
+    def test_channel_buttons_are_local_only(self):
+        # The channel ◀/▶ (48/49) arm the fader's channel on the unit itself; the bridge must
+        # not act on them (otherwise arming the fader would also switch a tab).
+        self.press(mcu.CHANNEL_PREV_NOTE)
+        self.press(mcu.CHANNEL_NEXT_NOTE)
+        self.assertEqual(self.backend.calls, [])
+        self.assertEqual(self.out.messages, [])
 
     def test_note_off_and_unknown_notes_ignored(self):
         self.engine.handle(mido.Message("note_off", note=mcu.MUTE_NOTE))
@@ -220,9 +228,9 @@ class TestTransport(EngineTestCase):
         self.assertEqual(self.backend.calls, [])
 
 
-class TestChannelButtons(EngineTestCase):
+class TestBankButtons(EngineTestCase):
     def test_prev_shows_notice_then_restores(self):
-        self.press(mcu.CHANNEL_PREV_NOTE)
+        self.press(mcu.BANK_PREV_NOTE)
         self.assertEqual(self.backend.calls, [("tab_prev",)])
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW1_OFFSET, "TAB")))
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW2_OFFSET, "< PREV")))
@@ -237,36 +245,36 @@ class TestChannelButtons(EngineTestCase):
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW2_OFFSET, "READY")))
 
     def test_next_shows_notice(self):
-        self.press(mcu.CHANNEL_NEXT_NOTE)
+        self.press(mcu.BANK_NEXT_NOTE)
         self.assertEqual(self.backend.calls, [("tab_next",)])
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW2_OFFSET, "NEXT >")))
 
     def test_notice_restores_the_previous_state_not_a_default(self):
         self.press(mcu.MUTE_NOTE)
         self.out.messages.clear()
-        self.press(mcu.CHANNEL_NEXT_NOTE)
+        self.press(mcu.BANK_NEXT_NOTE)
         self.clock.advance(1.3)
         self.engine.tick()
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW1_OFFSET, "SYSTEM")))
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW2_OFFSET, "MUTED")))
 
     def test_user_action_cancels_the_notice(self):
-        self.press(mcu.CHANNEL_PREV_NOTE)
+        self.press(mcu.BANK_PREV_NOTE)
         self.engine.handle(mido.Message("pitchwheel", pitch=0, channel=0))
         self.assertTrue(self.out.has(self.lcd(mcu.LCD_ROW2_OFFSET, "VOL  50")))
         self.clock.advance(1.3)
         self.out.messages.clear()
         self.engine.tick()
         # only the expired LED flash is sent; the notice is gone and nothing is re-rendered
-        self.assertEqual(self.out.messages, [b"\x90\x30\x00"])
+        self.assertEqual(self.out.messages, [bytes([0x90, mcu.BANK_PREV_NOTE, 0x00])])
 
     def test_notice_does_not_repeat_unchanged_rows(self):
-        self.press(mcu.CHANNEL_NEXT_NOTE)
+        self.press(mcu.BANK_NEXT_NOTE)
         self.assertEqual(len(self.out.batches), 3)  # LED + two LCD rows
         self.clock.advance(0.2)
         self.engine.tick()  # let the LED flash expire
         batches = len(self.out.batches)
-        self.press(mcu.CHANNEL_NEXT_NOTE)
+        self.press(mcu.BANK_NEXT_NOTE)
         self.assertEqual(len(self.out.batches), batches + 1)  # LED only; rows unchanged
 
 

@@ -122,14 +122,15 @@ class Engine:
         elif note == mcu.FF_NOTE:
             self.backend.media("next")
             self._flash(note)
-        elif note == mcu.CHANNEL_PREV_NOTE:
+        elif note == mcu.BANK_PREV_NOTE:
             self.backend.tab_prev()
             self._flash(note)
             self._notice_lcd("TAB", "< PREV")
-        elif note == mcu.CHANNEL_NEXT_NOTE:
+        elif note == mcu.BANK_NEXT_NOTE:
             self.backend.tab_next()
             self._flash(note)
             self._notice_lcd("TAB", "NEXT >")
+        # CHANNEL ◀/▶ (48/49) are local-only: they arm the fader's channel and are ignored here.
         elif note == mcu.ZOOM_NOTE:
             self.backend.zoom_toggle()
             self._flash(note)

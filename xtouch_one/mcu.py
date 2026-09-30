@@ -10,7 +10,10 @@ import mido
 SYSEX_ID = bytes([0x00, 0x00, 0x66, 0x14])  # Mackie Designs / MCU device id (F0/F7 added by mido)
 
 FADER_NOTE, MUTE_NOTE, REC_NOTE = 104, 16, 0
-#: "CHANNEL ◀/▶" buttons (MCU Channel Left/Right); the bridge maps them to tab switching.
+#: "FADER BANK ◀/▶" buttons (MCU Bank Left/Right); the bridge maps them to tab switching.
+BANK_PREV_NOTE, BANK_NEXT_NOTE = 46, 47
+#: "CHANNEL ◀/▶" buttons (MCU Channel Left/Right). Local-only on the X-Touch One: they
+#: select/arm the fader's channel and are intentionally left unmapped on the host.
 CHANNEL_PREV_NOTE, CHANNEL_NEXT_NOTE = 48, 49
 SHIFT_NOTE, REW_NOTE, STOP_NOTE, PLAY_NOTE = 57, 91, 93, 94
 FF_NOTE, ZOOM_NOTE, SCRUB_NOTE = 92, 100, 101

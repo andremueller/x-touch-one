@@ -111,11 +111,16 @@ X-Touch One display go dark, so text is written only on change.
 |Shift (note 57)|quadruples jog scroll|LED 57|
 |Play (94) / Stop (93)|play/pause|LED flash ~120 ms|
 |Rewind (91) / FF (92)|previous / next track|LED flash|
-|Channel ◀ (48) / ▶ (49)|previous / next tab (⌃⇧⇥ / ⌃⇥)|LED flash + LCD notice `TAB`/`< PREV` \| `NEXT >` for 1.2 s, then the previous display returns|
+|Bank ◀ (46) / ▶ (47)|previous / next tab (⌃⇧⇥ / ⌃⇥)|LED flash + LCD notice `TAB`/`< PREV` \| `NEXT >` for 1.2 s, then the previous display returns|
+|Channel ◀ (48) / ▶ (49)|local only: select/arm the fader's channel (the unit's own `Select Bank` prompt)|—|
 |Zoom (100)|⌥⌘8 accessibility zoom|LED flash|
 
 Stop sends play/pause: macOS has no `NX_KEYTYPE_STOP`. Unassigned by design: transport Record
 (note 95), the encoder (CC 16 / note 32), the foot switch, the 8-LED meter, the 7-segment display.
+
+At startup the unit shows its own `Select Bank` prompt and the fader stays down until a
+channel/bank button is pressed once — that arming is device-local (no host command selects the
+bank in MCU) and is why the channel buttons are left unmapped.
 
 ### Autostart
 

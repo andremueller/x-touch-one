@@ -98,6 +98,7 @@ class TestNoteMap(unittest.TestCase):
         self.assertEqual(mcu.FADER_NOTE, 104)
         self.assertEqual(mcu.MUTE_NOTE, 16)
         self.assertEqual(mcu.REC_NOTE, 0)
+        self.assertEqual((mcu.BANK_PREV_NOTE, mcu.BANK_NEXT_NOTE), (46, 47))
         self.assertEqual((mcu.CHANNEL_PREV_NOTE, mcu.CHANNEL_NEXT_NOTE), (48, 49))
         self.assertEqual((mcu.SHIFT_NOTE, mcu.REW_NOTE, mcu.STOP_NOTE, mcu.PLAY_NOTE), (57, 91, 93, 94))
         self.assertEqual((mcu.FF_NOTE, mcu.ZOOM_NOTE, mcu.SCRUB_NOTE), (92, 100, 101))
