@@ -257,8 +257,10 @@ class TestChannelButtons(EngineTestCase):
         self.clock.advance(1.3)
         self.out.messages.clear()
         self.engine.tick()
-        # only the expired LED flash is sent, no LCD row is re-rendered
-        self.assertEqual(self.out.messages, [b"\x90\x30\x00"])
+        # the expired LED flash plus the display keepalive; no TAB notice is re-sent
+        self.assertEqual(self.out.messages, [b"\x90\x30\x00",
+                                             self.lcd(mcu.LCD_ROW1_OFFSET, "MASTER"),
+                                             self.lcd(mcu.LCD_ROW2_OFFSET, "VOL  50")])
 
     def test_notice_does_not_repeat_unchanged_rows(self):
         self.press(mcu.CHANNEL_NEXT_NOTE)
@@ -322,11 +324,37 @@ class TestFader(EngineTestCase):
 
 
 class TestTickIdle(EngineTestCase):
-    def test_no_traffic_when_nothing_changes(self):
+    def test_idle_sends_nothing_but_the_display_refresh(self):
         self.engine.tick()
+        self.engine.tick()
+        self.assertEqual(self.out.messages, [])  # nothing changed, refresh not due
+
+        self.clock.advance(Engine.LCD_KEEPALIVE_DEFAULT)  # keepalive interval elapsed
+        self.out.messages.clear()
+        self.engine.tick()
+        self.assertEqual(self.out.messages, [self.lcd(mcu.LCD_ROW1_OFFSET, "DESKTOP"),
+                                             self.lcd(mcu.LCD_ROW2_OFFSET, "READY")])
+        self.assertEqual(self.backend.calls, [])  # no volume/mute traffic while idle
+
+    def test_keepalive_can_be_disabled(self):
+        engine = Engine(self.out, self.backend, lcd_keepalive=0.0, now=self.clock)
+        engine.start()
+        self.out.messages.clear()
+        self.clock.advance(30.0)
+        engine.tick()
+        self.assertEqual(self.out.messages, [])
+
+    def test_recent_writes_suppress_the_refresh(self):
+        self.press(mcu.MUTE_NOTE)  # writes both rows
+        self.out.messages.clear()
+        self.clock.advance(0.5)  # shorter than the keepalive interval
         self.engine.tick()
         self.assertEqual(self.out.messages, [])
-        self.assertEqual(self.backend.calls, [])
+
+        self.clock.advance(0.6)
+        self.engine.tick()
+        self.assertEqual(self.out.messages, [self.lcd(mcu.LCD_ROW1_OFFSET, "SYSTEM"),
+                                            self.lcd(mcu.LCD_ROW2_OFFSET, "MUTED")])
 
 
 if __name__ == "__main__":

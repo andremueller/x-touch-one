@@ -38,9 +38,12 @@ AUDIO     ?= auto
 #: Zusätzliche Argumente für `make run` / `make start`.
 ARGS      ?=
 
-#: PID-File und Log der Hintergrund-Bridge.
-PIDFILE   ?= /tmp/xtouch-one.pid
+#: Log der Hintergrund-Bridge (und des LaunchAgents).
 LOG       ?= /tmp/xtouch-one.log
+#: Single-Instance-Lock. Leer = CLI-Default (stabil pro Benutzer:
+#: ~/Library/Application Support/xtouch-one/bridge.lock). Nur setzen, wenn auch ein
+#: manueller Start dasselbe --lock-file bekommt, sonst greift der Schutz nicht.
+LOCKFILE  ?=
 #: Log des Selbsttests (Dummy-Backend, wird nicht aufgeräumt, wenn er scheitert).
 SELFTEST_LOG ?= /tmp/xtouch-one-selftest.log
 #: Laufzeit des Rauchtests am Gerät.
@@ -49,7 +52,7 @@ SELFTEST_SECONDS ?= 6
 .DEFAULT_GOAL := help
 
 .PHONY: help venv run start stop restart status log ports check-env \
-        test test-protocol test-engine test-macos check selftest check-all \
+        test test-protocol test-engine test-macos test-cli check selftest check-all \
         agent-install agent-uninstall clean clean-venv
 
 help: ## diese Übersicht anzeigen
@@ -77,43 +80,30 @@ $(VENV)/.deps: $(VENV)/bin/python pyproject.toml
 
 # ── Start ────────────────────────────────────────────────────────────────────
 
+LOCKARG    = $(if $(LOCKFILE),--lock-file $(LOCKFILE),)
+
 run: venv ## Bridge im Vordergrund starten (Strg-C beendet sie)
-	$(XT) --port $(PORT) --audio $(AUDIO) $(ARGS)
+	$(XT) --port $(PORT) --audio $(AUDIO) $(LOCKARG) $(ARGS)
 
 start: venv ## Bridge im Hintergrund starten (Logpfad: make status)
-	@if [ -f $(PIDFILE) ] && kill -0 $$(cat $(PIDFILE)) 2>/dev/null; then \
-	    echo "läuft bereits (PID $$(cat $(PIDFILE))) — erst 'make stop'" >&2; exit 1; \
+	@if $(XT) --lock-status $(LOCKARG) | grep -q "held by"; then \
+	    echo "läuft bereits: $$($(XT) --lock-status $(LOCKARG)) — erst 'make stop'" >&2; exit 1; \
 	fi
-	@nohup $(XT) --port $(PORT) --audio $(AUDIO) $(ARGS) >$(LOG) 2>&1 & \
-	echo $$! > $(PIDFILE); \
+	@nohup $(XT) --port $(PORT) --audio $(AUDIO) $(LOCKARG) $(ARGS) >$(LOG) 2>&1 & \
 	sleep 1; \
-	if kill -0 $$(cat $(PIDFILE)) 2>/dev/null; then \
-	    echo "gestartet: PID $$(cat $(PIDFILE)), Log $(LOG)"; \
+	if $(XT) --lock-status $(LOCKARG) | grep -q "held by"; then \
+	    echo "gestartet: $$($(XT) --lock-status $(LOCKARG)), Log $(LOG)"; \
 	else \
-	    echo "Start fehlgeschlagen — Log:" >&2; cat $(LOG) >&2; rm -f $(PIDFILE); exit 1; \
+	    echo "Start fehlgeschlagen — Log:" >&2; cat $(LOG) >&2; exit 1; \
 	fi
 
-stop: ## Hintergrund-Bridge beenden (SIGTERM, danach SIGKILL)
-	@if [ ! -f $(PIDFILE) ]; then echo "kein PID-File ($(PIDFILE)) — nichts zu beenden"; exit 0; fi; \
-	pid=$$(cat $(PIDFILE)); \
-	if kill -0 $$pid 2>/dev/null; then \
-	    kill -TERM $$pid; \
-	    for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 $$pid 2>/dev/null || break; sleep 0.3; done; \
-	    if kill -0 $$pid 2>/dev/null; then kill -KILL $$pid; echo "SIGKILL nach 3 s Wartezeit"; fi; \
-	    echo "beendet: PID $$pid"; \
-	else \
-	    echo "Prozess $$pid läuft nicht mehr"; \
-	fi; \
-	rm -f $(PIDFILE)
+stop: ## laufende Bridge beenden (Halter aus dem Lock; SIGTERM, danach SIGKILL)
+	@$(XT) --stop $(LOCKARG)
 
 restart: stop start ## Hintergrund-Bridge neu starten
 
-status: ## läuft die Bridge? PID und letzte Log-Zeilen
-	@if [ -f $(PIDFILE) ] && kill -0 $$(cat $(PIDFILE)) 2>/dev/null; then \
-	    echo "läuft: PID $$(cat $(PIDFILE))"; \
-	else \
-	    echo "nicht gestartet (kein lebender Prozess zu $(PIDFILE))"; \
-	fi
+status: ## läuft die Bridge? Halter aus dem Lock und letzte Log-Zeilen
+	@$(XT) --lock-status $(LOCKARG)
 	@echo "--- $(LOG), letzte 10 Zeilen ---"
 	@test -f $(LOG) && tail -n 10 $(LOG) || echo "(kein Log: $(LOG))"
 
@@ -142,6 +132,9 @@ test-engine: venv ## nur Zustandsmaschine (engine.py, Dummy-Backend)
 
 test-macos: venv ## nur macOS-Backend (Scrollachsen, braucht kein Gerät)
 	$(PY) -m unittest -v tests.test_macos
+
+test-cli: venv ## nur CLI-Lifecycle (Single-Instance-Lock)
+	$(PY) -m unittest -v tests.test_cli
 
 check: test check-env ## Integritätsprüfung ohne Hardware (Tests + Umgebungscheck)
 
@@ -177,10 +170,10 @@ agent-uninstall: venv ## LaunchAgent-Plist entfernen (gibt launchctl-Kommando au
 
 # ── Aufräumen ────────────────────────────────────────────────────────────────
 
-clean: ## __pycache__/, PID-File und Logs entfernen
+clean: ## __pycache__/ und Logs entfernen (Lock bleibt: ein laufender Prozess hält ihn)
 	find . -path ./$(VENV) -prune -o -name '__pycache__' -type d -print0 | xargs -0 rm -rf
 	find . -path ./$(VENV) -prune -o -name '*.py[co]' -type f -print0 | xargs -0 rm -f
-	rm -f $(PIDFILE) $(LOG) $(SELFTEST_LOG)
+	rm -f $(LOG) $(SELFTEST_LOG)
 
 clean-venv: ## .venv komplett entfernen
 	rm -rf $(VENV)

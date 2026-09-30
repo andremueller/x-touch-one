@@ -39,10 +39,10 @@ brew install python@3.12
 |---|---|
 |`make venv`|create/update `.venv` (stamp re-runs pip only when `pyproject.toml` changes)|
 |`make run`|bridge in the foreground (Ctrl-C stops it)|
-|`make start` / `make stop` / `make restart`|bridge in the background via PID file, SIGTERM then SIGKILL|
-|`make status` / `make log`|PID + last log lines / follow the log|
+|`make start` / `make stop` / `make restart`|bridge in the background; start/stop work through the single-instance lock|
+|`make status` / `make log`|lock holder + last log lines / follow the log|
 |`make ports` / `make check-env`|MIDI ports / permission, audio backend, matched ports|
-|`make test` / `test-protocol` / `test-engine` / `test-macos`|full suite / `mcu.py` / `engine.py` / macOS scroll axes|
+|`make test` / `test-protocol` / `test-engine` / `test-macos` / `test-cli`|full suite / `mcu.py` / `engine.py` / macOS scroll axes / lock|
 |`make check`|integrity check without hardware: tests + environment|
 |`make selftest`|smoke test on the real device with `--backend dummy` (no system actions)|
 |`make check-all`|`check` plus `selftest`|
@@ -67,8 +67,38 @@ Variables are overridable: `make start PORT="X-Touch" AUDIO=osascript`, `make ru
 |`--invert-scroll`|flip scroll direction|
 |`--audio {auto,coreaudio,osascript}`|system volume control; `auto` probes CoreAudio and falls back to `osascript`|
 |`--backend {auto,dummy}`|`dummy` logs each action instead of performing it|
+|`--lcd-keepalive SECONDS`|re-send unchanged LCD rows this often so the display cannot blank; `0` disables (default 1)|
+|`--lock-file PATH`|single-instance lock (default below)|
+|`--lock-status`|print whether another instance holds the lock, then exit|
+|`--stop`|SIGTERM the lock holder (SIGKILL after 5 s), then exit|
 |`--log-level {DEBUG,INFO,WARNING}`|stderr verbosity|
 |`--install-agent` / `--uninstall-agent`|write / remove the LaunchAgent plist (prints the `launchctl` commands to run)|
+
+### Single instance
+
+Every start — `xtouch-one`, `make start`, `make run` or the LaunchAgent — takes an
+**exclusive `flock`** on `~/Library/Application Support/xtouch-one/bridge.lock`
+(`$XDG_STATE_HOME/xtouch-one/bridge.lock` elsewhere, overridable with `--lock-file`).
+A second instance refuses with exit code **3** and logs the holder:
+
+```
+[bridge] another instance holds …/bridge.lock (PID 4211) — refusing to start
+```
+
+Two writers are not harmless: both would sweep the LEDs, write the LCD and drive the motor,
+so the display can jump back to `DESKTOP/READY` in the middle of a button press. The lock is
+released by the kernel when the holder dies, so a stale PID inside the file never blocks a
+start — the PID is only read to name the holder. `--stop`, `make stop` and `make status` all
+use the lock, which means they also reach instances started in the foreground (a PID file
+could not).
+
+With the LaunchAgent loaded, `KeepAlive` restarts a refused instance about every 10 s until
+the other holder exits; then the agent takes over by itself.
+
+The display blanks when the device stays idle, so the bridge repeats the unchanged LCD rows
+each `--lcd-keepalive` interval (1 s by default, 2 short SysEx messages per second, nothing
+in between). `--lcd-keepalive 0` turns that off. The init-time backlight-saver command
+`0B 7F` is still sent; whether the unit honours it is unconfirmed.
 
 ### Controls
 
@@ -117,6 +147,9 @@ Protocol tests are byte-exact and need no hardware or audio device.
   notices, flushes coalesced volume writes and reflects audio state changes without calling back
   into the backend. The LCD has one persistent state (volume, mute, scroll plane) plus a notice
   layer: `_notice_lcd()` shows something for `LCD_NOTICE_MS` and any state change cancels it.
+  Idle rows are re-sent every `lcd_keepalive` seconds so the display cannot blank.
+* `xtouch_one/__main__.py` — CLI, run loop and single-instance `flock` (`acquire_lock`,
+  `lock_report`, `stop_instance`); the lock is the only authority for "who is running".
 * `xtouch_one/macos.py` — Quartz keyboard/scroll events, `NSEvent` system-defined events for the
   media keys, and CoreAudio default-device volume/mute.
   CoreAudio property I/O is bound with `ctypes` because pyobjc's CoreAudio bridge cannot express
